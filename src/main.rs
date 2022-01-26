@@ -1,7 +1,9 @@
+// #![feature(write_all_vectored)]
 use anyhow::Result;
 use bytes::Buf;
 use clap::{Parser, Subcommand};
 use flate2::bufread::GzDecoder;
+// use rayon::prelude::*;
 use reqwest::header::{HeaderValue, CONTENT_LENGTH, RANGE};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -9,16 +11,17 @@ use serde_json::Value;
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::prelude::*;
-use std::io::{self, BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::time::Instant;
 
 const RA_DL_BASE: &str = "https://github.com/rust-analyzer/rust-analyzer/releases/";
 const RA_REL_API_BASE: &str = "https://api.github.com/repos/rust-analyzer/rust-analyzer/releases/";
 const MIRROR: &str = "https://github.91chi.fun//";
-const PAR_DL_BUF_SIZE: u64 = 64 * 1024;
+const PAR_DL_BUF_SIZE: u64 = 512 * 1024;
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[derive(Debug)]
@@ -243,11 +246,11 @@ fn ra_update(url: &str, mt: bool) -> Result<()> {
             .truncate(true)
             .open(&tmp_path)?,
     );
+    let now = Instant::now();
     if mt {
-        use tokio::fs::OpenOptions;
-        use tokio::io::{BufWriter, AsyncWriteExt, AsyncSeekExt, SeekFrom};
-        use tokio::runtime::Runtime;
-        use tokio::sync::Mutex;
+        use crossbeam::channel::unbounded;
+        use tokio::runtime::{Handle, Runtime};
+        use tokio::sync::mpsc::unbounded_channel;
 
         let rt = Runtime::new()?;
         rt.block_on(async {
@@ -259,71 +262,73 @@ fn ra_update(url: &str, mt: bool) -> Result<()> {
                 .expect("response doesn't include the content length");
             let size = u64::from_str(content_length.to_str()?)
                 .expect("Error: Invalid Content-Length header");
-            let mt_writer = Arc::new(Mutex::new(BufWriter::new(
-                OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(&tmp_path)
-                    .await?,
-            )));
-            let mut works = vec![];
+            let mut dl = vec![];
+            let (tx, mut rx) = unbounded_channel();
+            let tx = Arc::new(tx);
             PartialRangeIter::new(0, size - 1).for_each(|(range, start)| {
                 let url = url.to_owned();
                 let client = client.clone();
-                let mt_writer = mt_writer.clone();
-                works.push(tokio::spawn(async move {
+                let txc = tx.clone();
+                dl.push(tokio::spawn(async move {
                     let par_resp = client.get(url).header(RANGE, range).send().await?;
                     let status = par_resp.status();
                     if !(status == StatusCode::OK || status == StatusCode::PARTIAL_CONTENT) {
                         panic!("Error: Unexpected server response: {}", status);
                     }
-                    let par_bytes =  par_resp.bytes().await?;
-                    let mut mt_writer_lock = mt_writer.lock().await;
-                    mt_writer_lock.seek(SeekFrom::Start(start)).await?;
-                    mt_writer_lock.write_all(par_bytes.as_ref()).await?;
+                    let par_bytes = par_resp.bytes().await?;
+                    txc.send((par_bytes, start))?;
                     Ok::<(), anyhow::Error>(())
                 }));
             });
-            for w in works {
-                w.await??;
-            }
+            println!("spawn time: {}", now.elapsed().as_secs_f64());
+            let mut chunks_cnt = size / PAR_DL_BUF_SIZE + 1;
+            println!("cnt: {}", chunks_cnt);
+
+            tokio::task::block_in_place(move || {
+                let (tx, _rx) = unbounded();
+                Handle::current().block_on(async move {
+                    while chunks_cnt != 0 {
+                        if let Some((par_bytes, start)) = rx.recv().await {
+                            tx.send((par_bytes, start))?;
+                            chunks_cnt -= 1;
+                        }
+                    }
+                    println!("Download: {}", now.elapsed().as_secs_f64());
+                    Ok::<(), anyhow::Error>(())
+                })?;
+                while let Ok((par_bytes, start)) = _rx.recv() {
+                    writer.seek(SeekFrom::Start(start))?;
+                    writer.write_all(par_bytes.as_ref())?;
+                }
+                // use std::io::IoSlice;
+                // let mut buf = vec![];
+                // while let Ok((par_bytes, start)) = _rx.recv() {
+                //     buf.push((par_bytes, start));
+                // }
+                // buf.par_sort_by_key(|(_, start)| *start);
+                // let mut ra: Vec<IoSlice> = buf.iter().map(|(b, _)| IoSlice::new(b.as_ref())).collect();
+                // writer.write_all_vectored(&mut ra)?;
+
+                Ok::<(), anyhow::Error>(())
+            })?;
+            ra_extract(&tmp_path)?;
+            fs::remove_file(tmp_path)?;
             Ok::<(), anyhow::Error>(())
         })?;
-        // let par_size = PartialRangeIter::new(0, size - 1)?
-        //     .into_iter()
-        //     .collect::<Vec<_>>();
-        // par_size.par_iter().for_each(|(range, start)| {
-        //     let par_resp = client
-        //         .get(url)
-        //         .header(RANGE, range)
-        //         .send()
-        //         .await
-        //         .expect("Error: Can't send request");
-        //     let status = resp_header.status();
-        //     if !(status == StatusCode::OK || status == StatusCode::PARTIAL_CONTENT) {
-        //         panic!("Error: Unexpected server response: {}", status);
-        //     }
 
-        //     let mut par_reader =
-        //         BufReader::new(par_resp.bytes().expect("Error: Invalid resp").reader());
-
-        //     let mut par_lock = par_seeker.lock();
-        //     par_lock
-        //         .seek(SeekFrom::Start(*start))
-        //         .expect("Error: Seek error");
-        //     io::copy(&mut par_reader, &mut *par_lock).expect("Error: Write error");
-        // });
+        return Ok(());
     }
-    let mut bytes_reader = reqwest::blocking::get(url)?.bytes()?.reader();
 
-    std::io::copy(&mut bytes_reader, &mut writer).unwrap();
-    ra_replace(&tmp_path)?;
+    let mut bytes_reader = reqwest::blocking::get(url)?.bytes()?.reader();
+    println!("Download: {}", now.elapsed().as_secs_f64());
+    io::copy(&mut bytes_reader, &mut writer).unwrap();
+    ra_extract(&tmp_path)?;
     fs::remove_file(tmp_path)?;
+
     Ok(())
 }
 
-fn ra_replace(path: impl AsRef<Path>) -> Result<()> {
+fn ra_extract(path: impl AsRef<Path>) -> Result<()> {
     let reader = BufReader::new(File::open(path)?);
     let mut gz = GzDecoder::new(reader);
     let mut target = BufWriter::new(

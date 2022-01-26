@@ -378,7 +378,13 @@ fn ra_name() -> String {
         } else if cfg!(target_os = "macos") {
             "apple-darwin"
         } else if cfg!(target_os = "linux") {
-            "unknown-linux"
+            if cfg!(target_env = "gnu") {
+                "unknown-linux-gnu"
+            } else if cfg!(target_env = "musl") {
+                "unknown-linux-musl"
+            } else {
+                ""
+            }
         } else {
             ""
         }

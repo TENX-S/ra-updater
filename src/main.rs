@@ -137,7 +137,7 @@ impl RaVersion {
             .expect("Failed to exec rust-analyzer!");
         let version =
             String::from_utf8(ra_output.stdout).expect("Failed to get output of rust-analyzer");
-        let segments: Vec<&str> = version.split(" ").collect();
+        let segments: Vec<&str> = version.split(' ').collect();
         Self {
             commitish: segments[1].trim().into(),
             channel: segments[3].trim().into(),

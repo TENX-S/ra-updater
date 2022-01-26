@@ -373,11 +373,11 @@ fn ra_name() -> String {
         }
     };
     let distributor = {
-        if cfg!(windows) {
+        if cfg!(target_os = "windows") {
             "pc-windows-msvc"
-        } else if cfg!(macos) {
+        } else if cfg!(target_os = "macos") {
             "apple-darwin"
-        } else if cfg!(linux) {
+        } else if cfg!(target_os = "linux") {
             "unknown-linux"
         } else {
             ""

@@ -68,7 +68,7 @@ jobs:
       
       - name: Archive macOS artifact
         run: |
-          tar czvf ./target/release/x86_64-apple-darwin/ra-updater-x86_64-apple-darwin.tar.gz ./target/release/x86_64-apple-darwin/ra-updater && tar czvf ./target/release/aarch64-apple-darwin/ra-updater-aarch64-apple-darwin.tar.gz ./target/release/aarch64-apple-darwin/ra-updater 
+          tar czvf ./target/x86_64-apple-darwin/release/ra-updater-x86_64-apple-darwin.tar.gz ./target/x86_64-apple-darwin/release/ra-updater && tar czvf ./target/aarch64-apple-darwin/release/ra-updater-aarch64-apple-darwin.tar.gz ./target/aarch64-apple-darwin/release/ra-updater 
 
       - uses: actions/upload-artifact@v1
         with:

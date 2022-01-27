@@ -29,7 +29,7 @@ jobs:
           set OPENSSL_NO_VENDOR=1
           set RUSTFLAGS=-Ctarget-feature=+crt-static
           set SSL_CERT_FILE=C:\OpenSSL-Win64\certs\cacert.pem
-          cargo build --release --features vendored
+          cargo build --release
       
       - name: Archive Windows artifact
         run: |

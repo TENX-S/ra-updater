@@ -24,7 +24,7 @@ jobs:
 
       - name: Build Release
         run: |
-          cargo build --release
+          cargo build --release --features vendored
       
       - name: Archive Windows artifact
         run: |

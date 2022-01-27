@@ -108,10 +108,6 @@ jobs:
       - name: Build musl release
         run: |
           cargo build --release --target=x86_64-unknown-linux-musl --features vendored
-
-      - name: Archive Linux artifact
-        run: |
-          tar czvf ./target/x86_64-unknown-linux-gnu/release/ra-updater-unknown-linux-gnu.tar.gz ./target/x86_64-unknown-linux-gnu/release/ra-updater && tar czvf ./target/x86_64-unknown-linux-musl/release/ra-updater-unknown-linux-musl.tar.gz ./target/x86_64-unknown-linux-musl/release/ra-updater
                     
       - uses: actions/upload-artifact@v1
         with:
@@ -120,5 +116,5 @@ jobs:
           
       - uses: actions/upload-artifact@v1
         with:
-          name: ra-updater-x86_64-unknown-linux-musl.tar.gz
+          name: ra-updater-x86_64-unknown-linux-musl
           path: ./target/x86_64-unknown-linux-musl/release/ra-updater

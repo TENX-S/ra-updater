@@ -17,10 +17,6 @@ jobs:
           override: true
 
       - uses: Swatinem/rust-cache@v1
-      
-      - name: Install Utilities
-        run: |
-          choco install -y tar
 
       - name: Build Release
         run: |

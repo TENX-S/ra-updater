@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: ra-updater-x86_64-pc-windows-msvc
+          name: ra-updater-x86_64-pc-windows-msvc.tar.gz
           path: ./target/release/ra-updater-x86_64-pc-windows-msvc.tar.gz
 
   build-mac:
@@ -68,17 +68,17 @@ jobs:
       
       - name: Archive macOS artifact
         run: |
-          tar czvf ./target/release/x86_64-apple-darwin/ra-updater-x86_64-apple-darwin.tar.gz ./target/release/x86_64-apple-darwin/ra-updater && tar czvf ./target/release/aarch64-apple-darwin/ra-updater-x86_64-apple-darwin.tar.gz ./target/release/aarch64-apple-darwin/ra-updater 
+          tar czvf ./target/release/x86_64-apple-darwin/ra-updater-x86_64-apple-darwin.tar.gz ./target/release/x86_64-apple-darwin/ra-updater && tar czvf ./target/release/aarch64-apple-darwin/ra-updater-aarch64-apple-darwin.tar.gz ./target/release/aarch64-apple-darwin/ra-updater 
 
       - uses: actions/upload-artifact@v1
         with:
-          name: ra-updater-x86_64-apple-darwin
-          path: ./target/x86_64-apple-darwin/release/ra-updater
+          name: ra-updater-x86_64-apple-darwin.tar.gz
+          path: ./target/x86_64-apple-darwin/release/ra-updater-x86_64-apple-darwin.tar.gz
           
       - uses: actions/upload-artifact@v1
         with:
-          name: ra-updater-aarch64-apple-darwin
-          path: ./target/aarch64-apple-darwin/release/ra-updater
+          name: ra-updater-aarch64-apple-darwin.tar.gz
+          path: ./target/release/aarch64-apple-darwin/ra-updater-aarch64-apple-darwin.tar.gz
           
   build-linux:
     runs-on: ubuntu-latest
@@ -121,10 +121,10 @@ jobs:
                     
       - uses: actions/upload-artifact@v1
         with:
-          name: ra-updater-x86_64-unknown-linux-gnu
+          name: ra-updater-x86_64-unknown-linux-gnu.tar.gz
           path: ./target/x86_64-unknown-linux-gnu/release/ra-updater-unknown-linux-gnu.tar.gz
           
       - uses: actions/upload-artifact@v1
         with:
-          name: ra-updater-x86_64-unknown-linux-musl
+          name: ra-updater-x86_64-unknown-linux-musl.tar.gz
           path: ./target/x86_64-unknown-linux-musl/release/ra-updater-unknown-linux-musl.tar.gz

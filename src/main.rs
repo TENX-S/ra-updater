@@ -74,7 +74,7 @@ enum ReleaseChannel {
 #[derive(Debug)]
 struct RaVersion {
     commitish: String,
-    channel: ReleaseChannel,
+    rel_chan: ReleaseChannel,
 }
 
 impl RaVersion {
@@ -82,39 +82,39 @@ impl RaVersion {
         if !ra_exec_path().exists() {
             println!("rust-analyzer not found. Downloading ...");
             if let Some(Cmd::Channel {
-                rel_chan: value,
+                rel_chan,
                 mirror,
                 mt,
             }) = cli.cmd
             {
-                let dl_url = ra_remote(value, mirror)?.1;
-                ra_update(&dl_url, mt)?;
+                let dl_url = ra_remote(rel_chan, mirror)?.1;
+                ra_download(&dl_url, mt)?;
                 std::process::exit(0);
             } else {
                 let dl_url = ra_remote(ReleaseChannel::Stable, cli.mirror)?.1;
-                ra_update(&dl_url, cli.mt)?;
+                ra_download(&dl_url, cli.mt)?;
                 std::process::exit(0);
             }
         } else {
             let version = ra_version()?;
             let segments: Vec<&str> = version.split(' ').collect();
-            let channel = if segments[3].trim() == "stable" {
+            let rel_chan = if segments[3].trim() == "stable" {
                 ReleaseChannel::Stable
             } else {
                 ReleaseChannel::Nightly
             };
             Ok(Self {
                 commitish: segments[1].trim().into(),
-                channel,
+                rel_chan,
             })
         }
     }
 
-    fn set_channel(&mut self, channel: ReleaseChannel, mirror: bool, mt: bool) -> Result<()> {
-        if self.channel != channel {
-            println!("Switching to {:?} channel ...", channel);
-            let dl_url = ra_remote(channel, mirror)?.1;
-            ra_update(&dl_url, mt)?;
+    fn set_channel(&mut self, rel_chan: ReleaseChannel, mirror: bool, mt: bool) -> Result<()> {
+        if self.rel_chan != rel_chan {
+            println!("Switching to {:?} channel ...", rel_chan);
+            let dl_url = ra_remote(rel_chan, mirror)?.1;
+            ra_download(&dl_url, mt)?;
             println!("Done");
             Ok(())
         } else {
@@ -145,8 +145,7 @@ impl Iterator for PartialRangeIter {
             let prev_start = self.start;
             self.start += std::cmp::min(PAR_DL_BUF_SIZE, self.end - self.start + 1);
             Some((
-                HeaderValue::from_str(&format!("bytes={}-{}", prev_start, self.start - 1))
-                    .expect("string provided by format!"),
+                HeaderValue::from_str(&format!("bytes={}-{}", prev_start, self.start - 1)).unwrap(), // PANIC: Never
                 prev_start,
             ))
         }
@@ -157,13 +156,13 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut ver = RaVersion::parse(&cli)?;
 
-    let (rel_api, dl_url) = &ra_remote(ver.channel, cli.mirror)?;
+    let (rel_api, dl_url) = &ra_remote(ver.rel_chan, cli.mirror)?;
     match cli.cmd {
         Some(Cmd::Channel {
-            rel_chan: value,
+            rel_chan,
             mirror,
             mt,
-        }) => ver.set_channel(value, mirror, mt)?,
+        }) => ver.set_channel(rel_chan, mirror, mt)?,
         None => {
             let up_to_date = check_update(rel_api, &ver.commitish)?;
             if cli.check {
@@ -179,7 +178,7 @@ fn main() -> Result<()> {
                 std::process::exit(0);
             }
             println!("Updating ...");
-            ra_update(dl_url, cli.mt)?;
+            ra_download(dl_url, cli.mt)?;
             println!("Done");
         }
     }
@@ -199,7 +198,7 @@ fn check_update(rel_api: &str, curr: &str) -> Result<bool> {
     Ok(latest.starts_with(curr))
 }
 
-fn ra_update(dl_url: &str, mt: bool) -> Result<()> {
+fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
     let temp = dirs_next::download_dir()
         .unwrap() // Never panic, ra_name() guarantees it
         .join("rust-analyzer_ra_updater_temp.gz");
@@ -280,7 +279,7 @@ fn ra_update(dl_url: &str, mt: bool) -> Result<()> {
 
                 Ok::<(), anyhow::Error>(())
             })?;
-            ra_extract(&temp)?;
+            ra_replace(&temp)?;
             fs::remove_file(temp)?;
             Ok::<(), anyhow::Error>(())
         })?;
@@ -291,13 +290,13 @@ fn ra_update(dl_url: &str, mt: bool) -> Result<()> {
     let mut bytes_reader = reqwest::blocking::get(dl_url)?.bytes()?.reader();
     println!("Download: {:.2}s", now.elapsed().as_secs_f64());
     io::copy(&mut bytes_reader, &mut dl_writer)?;
-    ra_extract(&temp)?;
+    ra_replace(&temp)?;
     fs::remove_file(temp)?;
 
     Ok(())
 }
 
-fn ra_extract(path: impl AsRef<Path>) -> Result<()> {
+fn ra_replace(path: impl AsRef<Path>) -> Result<()> {
     let reader = BufReader::new(File::open(path)?);
     let mut gz = GzDecoder::new(reader);
     let mut target = BufWriter::new(
@@ -320,8 +319,8 @@ fn ra_version() -> Result<String> {
 }
 
 #[inline]
-fn ra_remote(channel: ReleaseChannel, mirror: bool) -> Result<(String, String)> {
-    let (api_tag, dl_tag) = match channel {
+fn ra_remote(rel_chan: ReleaseChannel, mirror: bool) -> Result<(String, String)> {
+    let (api_tag, dl_tag) = match rel_chan {
         ReleaseChannel::Stable => ("latest", "latest/download/"),
         ReleaseChannel::Nightly => ("tags/nightly", "download/nightly/"),
     };

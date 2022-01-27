@@ -1,10 +1,10 @@
 If you want to manage rust-analyzer manually then this crate is for you.
 Here, the "manually" mean you do not use extensions live in VSCode or something like that to update rust-analyzer automatically.
 
-Remember to set `RA_HOME` in your shell profile. This environment variable shows where rust-analyzer lives in.
+**Remember to set RA_HOME in your shell profile.** This environment variable shows where rust-analyzer lives in.
 
 USAGE:
-    ra-updater.exe [OPTIONS] [SUBCOMMAND]
+    ra-updater [OPTIONS] [SUBCOMMAND]
 
 OPTIONS:
     -a, --mirror     F** the [GFW](https://wikipedia.org/wiki/Great_Firewall)

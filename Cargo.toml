@@ -1,20 +1,47 @@
 [package]
 name = "ra-updater"
-version = "0.1.0"
+version = "1.0.0"
+authors = ["Ares <andrew_ares@outlook.com>"]
 edition = "2021"
+description = "rust-analyzer updater"
 
 [dependencies]
-clap = { version = "3", features = ["derive"] }
-reqwest = { version = "0.11", features = ["blocking"] }
-serde = { version = "1", features = ["derive"]  }
-tokio = { version = "1", features = ["full"]  }
 anyhow = "1"
 serde_json = "1"
 rayon = "1"
 bytes = "1"
-toml = "0.5"
 flate2 = "1"
 dirs-next = "2"
-parking_lot = "0.11"
 crossbeam = "0.8"
+strum = "0.23"
+strum_macros = "0.23"
+
+[dependencies.clap]
+version = "3"
+features = ["derive"]
+
+[dependencies.reqwest]
+version = "0.11"
+features = ["blocking"]
+
+[dependencies.tokio]
+version = "1"
+features = ["full"]
+
+[profile.release]
+opt-level = "s"
+debug = false
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = "unwind"
+codegen-units = 256
+rpath = false
+incremental = true
 

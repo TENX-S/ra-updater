@@ -1,0 +1,6 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.'cfg(target_family = "unix")']
+rustflags = ["-Z", "sanitizer=address", "-Z", "sanitizer=leak", "-Z", "sanitizer=memory", "-Z", "sanitizer=thread"]
+

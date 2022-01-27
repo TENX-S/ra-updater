@@ -81,7 +81,12 @@ impl RaVersion {
     fn parse(cli: &Cli) -> Result<Self> {
         if !ra_exec_path().exists() {
             println!("rust-analyzer not found. Downloading ...");
-            if let Some(Cmd::Channel { rel_chan: value, mirror, mt }) = cli.cmd {
+            if let Some(Cmd::Channel {
+                rel_chan: value,
+                mirror,
+                mt,
+            }) = cli.cmd
+            {
                 let dl_url = ra_remote(value, mirror)?.1;
                 ra_update(&dl_url, mt)?;
                 std::process::exit(0);
@@ -154,7 +159,11 @@ fn main() -> Result<()> {
 
     let (rel_api, dl_url) = &ra_remote(ver.channel, cli.mirror)?;
     match cli.cmd {
-        Some(Cmd::Channel { rel_chan: value, mirror, mt }) => ver.set_channel(value, mirror, mt)?,
+        Some(Cmd::Channel {
+            rel_chan: value,
+            mirror,
+            mt,
+        }) => ver.set_channel(value, mirror, mt)?,
         None => {
             let up_to_date = check_update(rel_api, &ver.commitish)?;
             if cli.check {

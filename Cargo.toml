@@ -1,6 +1,6 @@
 [package]
 name = "ra-updater"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Ares <andrew_ares@outlook.com>"]
 edition = "2021"
 description = "rust-analyzer updater"
@@ -15,9 +15,6 @@ dirs-next = "2"
 crossbeam = "0.8"
 strum = "0.23"
 strum_macros = "0.23"
-# Add openssl-sys as a direct dependency so it can be cross compiled to
-# x86_64-unknown-linux-musl using the "vendored" feature below
-openssl-sys = "*"
 
 [dependencies.clap]
 version = "3"
@@ -33,6 +30,11 @@ features = ["full", "tracing"]
 
 [dependencies.console-subscriber]
 git = "https://github.com/tokio-rs/console.git"
+optional = true
+
+[dependencies.openssl-sys]
+version = "*"
+optional = true
 
 [profile.release]
 opt-level = "s"
@@ -52,7 +54,6 @@ rpath = false
 incremental = true
 
 [features]
-# Force openssl-sys to staticly link in the openssl library. Necessary when
-# cross compiling to x86_64-unknown-linux-musl.
 vendored = ["openssl-sys/vendored"]
+tracing = ["console-subscriber"]
 

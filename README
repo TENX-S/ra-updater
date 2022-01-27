@@ -1,4 +1,4 @@
-If you want to manage rust-analyzer manually then this crate is for you.
+If you want to manage rust-analyzer manually then this utility is for you.
 Here, the "manually" mean you do not use extensions live in VSCode or something like that to update rust-analyzer automatically.
 
 **Remember to set RA_HOME in your shell profile.** This environment variable shows where rust-analyzer lives in.

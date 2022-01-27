@@ -17,19 +17,11 @@ jobs:
           override: true
 
       - uses: Swatinem/rust-cache@v1
-      
-      - name: Install dependencies
-        run: |
-          vcpkg install openssl:x64-windows-static
-          mkdir "C:\Program Files\OpenSSL-Win64\certs"
-          curl --remote-name --time-cond "C:\Program Files\OpenSSL-Win64\certs\cacert.pem" -o "C:\Program Files\OpenSSL-Win64\certs\cacert.pem" https://curl.se/ca/cacert.pem
-
+          
       - name: Build Release
         run: |
-          set OPENSSL_NO_VENDOR=1
-          set RUSTFLAGS=-Ctarget-feature=+crt-static
-          set SSL_CERT_FILE=C:\OpenSSL-Win64\certs\cacert.pem
-          cargo build --release
+          choco install strawberryperl -y
+          cargo build --release --features "vendored"
       
       - name: Archive Windows artifact
         run: |

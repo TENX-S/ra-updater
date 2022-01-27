@@ -17,6 +17,10 @@ jobs:
           override: true
 
       - uses: Swatinem/rust-cache@v1
+      
+      - name: Install dependencies
+        run: |
+          choco install openssl -y
 
       - name: Build Release
         run: |
@@ -45,6 +49,10 @@ jobs:
           override: true
           
       - uses: Swatinem/rust-cache@v1
+      
+      - name: Install dependencies
+        run: |
+          brew install openssl
 
       - name: Add x86_64 target
         run: |
@@ -113,14 +121,14 @@ jobs:
 
       - name: Archive Linux artifact
         run: |
-          tar czvf ./target/release/x86_64-unknown-linux-gnu/ra-updater-unknown-linux-gnu.tar.gz ./target/release/x86_64-unknown-linux-gnu/ra-updater && tar czvf ./target/release/x86_64-unknown-linux-musl/ra-updater-unknown-linux-musl.tar.gz ./target/release/x86_64-unknown-linux-musl/ra-updater
+          tar czvf ./target/x86_64-unknown-linux-gnu/release/ra-updater-unknown-linux-gnu.tar.gz ./target/x86_64-unknown-linux-gnu/release/ra-updater && tar czvf ./target/x86_64-unknown-linux-musl/release/ra-updater-unknown-linux-musl.tar.gz ./target/x86_64-unknown-linux-musl/release/ra-updater
                     
       - uses: actions/upload-artifact@v1
         with:
           name: ra-updater-x86_64-unknown-linux-gnu
-          path: ./target/release/x86_64-unknown-linux-gnu/ra-updater-unknown-linux-gnu.tar.gz
+          path: ./target/x86_64-unknown-linux-gnu/release/ra-updater-unknown-linux-gnu.tar.gz
           
       - uses: actions/upload-artifact@v1
         with:
           name: ra-updater-x86_64-unknown-linux-musl
-          path: ./target/release/x86_64-unknown-linux-musl/ra-updater-unknown-linux-musl.tar.gz
+          path: ./target/x86_64-unknown-linux-musl/release/ra-updater-unknown-linux-musl.tar.gz

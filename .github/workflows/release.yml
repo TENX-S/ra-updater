@@ -12,7 +12,7 @@ jobs:
       - name: Install Stable Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          profile: release
+          profile: minimal
           toolchain: stable
           components: rustfmt
           override: true
@@ -41,7 +41,7 @@ jobs:
       - name: Install Stable Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          profile: release
+          profile: minimal
           toolchain: stable
           components: rustfmt
           override: true
@@ -91,7 +91,7 @@ jobs:
       - name: Install Stable Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          profile: release
+          profile: minimal
           toolchain: stable
           components: rustfmt
           override: true

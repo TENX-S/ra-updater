@@ -83,7 +83,7 @@ jobs:
       - uses: actions/upload-artifact@v1
         with:
           name: ra-updater-aarch64-apple-darwin.tar.gz
-          path: ./target/release/aarch64-apple-darwin/ra-updater-aarch64-apple-darwin.tar.gz
+          path: ./target/aarch64-apple-darwin/release/ra-updater-aarch64-apple-darwin.tar.gz
           
   build-linux:
     runs-on: ubuntu-latest

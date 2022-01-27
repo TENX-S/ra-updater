@@ -29,7 +29,10 @@ features = ["blocking"]
 
 [dependencies.tokio]
 version = "1"
-features = ["full"]
+features = ["full", "tracing"]
+
+[dependencies.console-subscriber]
+git = "https://github.com/tokio-rs/console.git"
 
 [profile.release]
 opt-level = "s"

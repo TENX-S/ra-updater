@@ -218,6 +218,7 @@ fn ra_update(dl_url: &str, mt: bool) -> Result<()> {
 
         let rt = Runtime::new()?;
         rt.block_on(async {
+            console_subscriber::init();
             let client = Arc::new(reqwest::Client::new());
             let resp_header = client.head(dl_url).send().await?;
             let content_length = resp_header

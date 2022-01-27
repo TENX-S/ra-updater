@@ -20,7 +20,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          choco install openssl -y
+          vcpkg install openssl-windows:x64-windows && vcpkg install openssl:x64-windows-static
 
       - name: Build Release
         run: |
@@ -49,10 +49,6 @@ jobs:
           override: true
           
       - uses: Swatinem/rust-cache@v1
-      
-      - name: Install dependencies
-        run: |
-          brew install openssl
 
       - name: Add x86_64 target
         run: |
@@ -68,7 +64,7 @@ jobs:
 
       - name: Build aarch64 target
         run: |
-          cargo build --release --target=aarch64-apple-darwin
+          cargo build --release --target=aarch64-apple-darwin --features vendored
       
       - name: Archive macOS artifact
         run: |

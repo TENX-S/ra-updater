@@ -14,23 +14,26 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
-          components: rustfmt
           override: true
 
       - uses: Swatinem/rust-cache@v1
-
-      - name: Check Formatting
+      
+      - name: Install Utilities
         run: |
-          cargo fmt --all -- --check
+          choco install -y tar
 
       - name: Build Release
         run: |
           cargo build --release
+      
+      - name: Archive Windows artifact
+        run: |
+          tar czvf ./target/release/ra-updater-x86_64-pc-windows-msvc.tar.gz ./target/release/ra-updater.exe
 
       - uses: actions/upload-artifact@v2
         with:
           name: ra-updater-x86_64-pc-windows-msvc
-          path: ./target/release/ra-updater.exe
+          path: ./target/release/ra-updater-x86_64-pc-windows-msvc.tar.gz
 
   build-mac:
     runs-on: macos-11
@@ -43,7 +46,6 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
-          components: rustfmt
           override: true
           
       - uses: Swatinem/rust-cache@v1
@@ -56,10 +58,6 @@ jobs:
         run: |
           rustup target add aarch64-apple-darwin
 
-      - name: Check Formatting
-        run: |
-          cargo fmt --all -- --check
-
       - name: Build x86_64 target
         run: |
           cargo build --release --target=x86_64-apple-darwin
@@ -67,6 +65,11 @@ jobs:
       - name: Build aarch64 target
         run: |
           cargo build --release --target=aarch64-apple-darwin
+      
+      - name: Archive macOS artifact
+        run: |
+          tar czvf ./target/release/x86_64-apple-darwin/ra-updater-x86_64-apple-darwin.tar.gz ./target/release/x86_64-apple-darwin/ra-updater && \
+          tar czvf ./target/release/aarch64-apple-darwin/ra-updater-x86_64-apple-darwin.tar.gz ./target/release/aarch64-apple-darwin/ra-updater 
 
       - uses: actions/upload-artifact@v1
         with:
@@ -93,24 +96,37 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
-          components: rustfmt
           override: true
 
       - uses: Swatinem/rust-cache@v1
-
-      - name: Check Formatting
+      
+      - name: Add musl target
+      - run: |
+          rustup target add x86_64-unknown-linux-musl
+      
+      - name: Install dependencies
         run: |
-          cargo fmt --all -- --check
+          sudo apt-get install -y libssl-dev musl-tools
 
-      - name: Build Release
+      - name: Build gnu release
         run: |
-          cargo build --release
+          cargo build --release --target=x86_64-unknown-linux-gnu
+      
+      - name: Build musl release
+        run: |
+          cargo build --release --target=x86_64-unknown-linux-musl --features vendored
 
       - name: Archive Linux artifact
         run: |
-          tar czvf ./target/release/ra-updater.tar.gz ./target/release/ra-updater
+          tar czvf ./target/release/x86_64-unknown-linux-gnu/ra-updater-unknown-linux-gnu.tar.gz ./target/release/x86_64-unknown-linux-gnu/ra-updater && \
+          tar czvf ./target/release/x86_64-unknown-linux-musl/ra-updater-unknown-linux-musl.tar.gz ./target/release/x86_64-unknown-linux-musl/ra-updater          
 
       - uses: actions/upload-artifact@v1
         with:
           name: ra-updater-x86_64-unknown-linux-gnu
-          path: ./target/release/ra-updater.tar.gz
+          path: ./target/release/x86_64-unknown-linux-gnu/ra-updater-unknown-linux-gnu.tar.gz
+          
+      - uses: actions/upload-artifact@v1
+        with:
+          name: ra-updater-x86_64-unknown-linux-musl
+          path: ./target/release/x86_64-unknown-linux-musl/ra-updater-unknown-linux-musl.tar.gz

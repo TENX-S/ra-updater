@@ -334,16 +334,11 @@ fn ra_remote(rel_chan: ReleaseChannel, mirror: bool) -> Result<(String, String)>
 
 #[inline]
 fn ra_exec_path() -> PathBuf {
-    PathBuf::from(ra_home()).join(ra_exec())
-}
-
-#[inline]
-fn ra_exec() -> String {
     let mut ra_exec = "rust-analyzer".to_owned();
     if cfg!(target_os = "windows") {
         ra_exec.push_str(".exe")
     }
-    ra_exec
+    PathBuf::from(ra_home()).join(ra_exec)
 }
 
 #[inline]

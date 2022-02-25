@@ -20,7 +20,7 @@ use strum_macros::Display;
 const RA_DL_BASE: &str = "https://github.com/rust-analyzer/rust-analyzer/releases/";
 const RA_REL_API_BASE: &str = "https://api.github.com/repos/rust-analyzer/rust-analyzer/releases/";
 const MIRROR: &str = "https://github.91chi.fun//";
-const PAR_DL_BUF_SIZE: u64 = 512 * 1024;
+const PAR_DL_SIZE: u64 = 512 * 1024;
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[derive(Parser, Debug)]
@@ -112,7 +112,7 @@ impl RaVersion {
 
     fn set_channel(&mut self, rel_chan: ReleaseChannel, mirror: bool, mt: bool) -> Result<()> {
         if self.rel_chan != rel_chan {
-            println!("Switching to {:?} channel ...", rel_chan);
+            println!("Switching to {} channel ...", rel_chan);
             let dl_url = ra_remote(rel_chan, mirror)?.1;
             ra_download(&dl_url, mt)?;
             println!("Done");
@@ -125,25 +125,25 @@ impl RaVersion {
 }
 
 #[derive(Debug)]
-struct PartialRangeIter {
+struct ParHeadRange {
     start: u64,
     end: u64,
 }
 
-impl PartialRangeIter {
+impl ParHeadRange {
     pub fn new(start: u64, end: u64) -> Self {
-        PartialRangeIter { start, end }
+        ParHeadRange { start, end }
     }
 }
 
-impl Iterator for PartialRangeIter {
+impl Iterator for ParHeadRange {
     type Item = (HeaderValue, u64);
     fn next(&mut self) -> Option<Self::Item> {
         if self.start > self.end {
             None
         } else {
             let prev_start = self.start;
-            self.start += std::cmp::min(PAR_DL_BUF_SIZE, self.end - self.start + 1);
+            self.start += std::cmp::min(PAR_DL_SIZE, self.end - self.start + 1);
             Some((
                 HeaderValue::from_str(&format!("bytes={}-{}", prev_start, self.start - 1)).unwrap(), // PANIC: Never
                 prev_start,
@@ -210,14 +210,16 @@ fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
             .open(&temp)?,
     );
 
+    // FIXME: handle timeout case
     if mt {
-        return download_mt(dl_url, &temp, &mut dl_writer)
+        download_mt(dl_url, &mut dl_writer)?
+    } else {
+        let now = Instant::now();
+        let mut bytes_reader = reqwest::blocking::get(dl_url)?.bytes()?.reader();
+        println!("Download: {:.2}s", now.elapsed().as_secs_f64());
+        io::copy(&mut bytes_reader, &mut dl_writer)?;
     }
 
-    let now = Instant::now();
-    let mut bytes_reader = reqwest::blocking::get(dl_url)?.bytes()?.reader();
-    println!("Download: {:.2}s", now.elapsed().as_secs_f64());
-    io::copy(&mut bytes_reader, &mut dl_writer)?;
     ra_replace(&temp)?;
     fs::remove_file(temp)?;
 
@@ -225,7 +227,7 @@ fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
 }
 
 #[tokio::main]
-async fn download_mt(dl_url: &str, temp: &Path, dl_writer: &mut BufWriter<File>) -> Result<()> {
+async fn download_mt(dl_url: &str, dl_writer: &mut BufWriter<File>) -> Result<()> {
     use crossbeam::channel::unbounded;
     use tokio::sync::mpsc::unbounded_channel;
 
@@ -246,11 +248,11 @@ async fn download_mt(dl_url: &str, temp: &Path, dl_writer: &mut BufWriter<File>)
         .expect("response doesn't include the content length");
     let size =
         u64::from_str(content_length.to_str()?).expect("Error: Invalid Content-Length header");
-    let mut chunks_cnt = size / PAR_DL_BUF_SIZE + 1;
+    let mut chunks_cnt = size / PAR_DL_SIZE + 1;
     let (tx, mut rx) = unbounded_channel();
     let tx = Arc::new(tx);
     let spawn_start = Instant::now();
-    PartialRangeIter::new(0, size - 1).for_each(|(range, start)| {
+    ParHeadRange::new(0, size - 1).for_each(|(range, start)| {
         let url = dl_url.to_owned();
         let client = client.clone();
         let txc = tx.clone();
@@ -296,8 +298,6 @@ async fn download_mt(dl_url: &str, temp: &Path, dl_writer: &mut BufWriter<File>)
     // buf.par_sort_by_key(|(_, start)| *start);
     // let mut ra: Vec<IoSlice> = buf.iter().map(|(b, _)| IoSlice::new(b.as_ref())).collect();
     // writer.write_all_vectored(&mut ra)?;
-    ra_replace(&temp)?;
-    fs::remove_file(temp)?;
     Ok::<(), anyhow::Error>(())
 }
 

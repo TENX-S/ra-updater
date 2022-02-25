@@ -120,7 +120,7 @@ impl RaVersion {
             println!("Done");
             Ok(())
         } else {
-            println!("You are already in stable channel");
+            println!("You are already in {} channel", rel_chan);
             Ok(())
         }
     }

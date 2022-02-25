@@ -25,9 +25,8 @@ version = "0.11"
 features = ["blocking"]
 
 [dependencies.tokio]
-git = "https://github.com/TENX-S/tokio.git"
-branch = "optimize-spawn"
-features = ["rt-multi-thread", "sync", "tracing"]
+version = "1"
+features = ["rt-multi-thread", "sync", "tracing", "macros"]
 
 [dependencies.console-subscriber]
 git = "https://github.com/tokio-rs/console.git"
@@ -43,8 +42,9 @@ debug = false
 lto = true
 strip = true
 codegen-units = 1
+panic = "abort"
 
 [features]
 vendored = ["openssl-sys/vendored"]
-tracing = ["console-subscriber"]
+debug = ["console-subscriber"]
 

@@ -209,84 +209,12 @@ fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
             .truncate(true)
             .open(&temp)?,
     );
-    let now = Instant::now();
+
     if mt {
-        use crossbeam::channel::unbounded;
-        use tokio::runtime::{Handle, Runtime};
-        use tokio::sync::mpsc::unbounded_channel;
-
-        let rt = Runtime::new()?;
-        rt.block_on(async {
-            #[cfg(feature = "tracing")]
-            console_subscriber::init();
-            let client = Arc::new(reqwest::Client::new());
-            let resp_header = client.head(dl_url).send().await?;
-            let content_length = resp_header
-                .headers()
-                .get(CONTENT_LENGTH)
-                .expect("response doesn't include the content length");
-            let size = u64::from_str(content_length.to_str()?)
-                .expect("Error: Invalid Content-Length header");
-            let mut chunks_cnt = size / PAR_DL_BUF_SIZE + 1;
-            let mut dl = Vec::with_capacity(chunks_cnt as usize);
-            let (tx, mut rx) = unbounded_channel();
-            let tx = Arc::new(tx);
-            PartialRangeIter::new(0, size - 1).for_each(|(range, start)| {
-                let url = dl_url.to_owned();
-                let client = client.clone();
-                let txc = tx.clone();
-                dl.push(tokio::spawn(async move {
-                    let par_resp = client.get(url).header(RANGE, range).send().await?;
-                    let status = par_resp.status();
-                    if !(status == StatusCode::OK || status == StatusCode::PARTIAL_CONTENT) {
-                        anyhow::bail!("Error: Unexpected server response: {}", status);
-                    }
-                    let par_bytes = par_resp.bytes().await?;
-                    txc.send((par_bytes, start))?;
-                    Ok::<(), anyhow::Error>(())
-                }));
-            });
-            println!(
-                "Spawn {} tasks: {:.2}s",
-                chunks_cnt,
-                now.elapsed().as_secs_f64()
-            );
-
-            tokio::task::block_in_place(move || {
-                let (tx, _rx) = unbounded();
-                Handle::current().block_on(async move {
-                    while chunks_cnt != 0 {
-                        if let Some((par_bytes, start)) = rx.recv().await {
-                            tx.send((par_bytes, start))?;
-                            chunks_cnt -= 1;
-                        }
-                    }
-                    println!("Download: {:.2}s", now.elapsed().as_secs_f64());
-                    Ok::<(), anyhow::Error>(())
-                })?;
-                while let Ok((par_bytes, start)) = _rx.recv() {
-                    dl_writer.seek(SeekFrom::Start(start))?;
-                    dl_writer.write_all(par_bytes.as_ref())?;
-                }
-                // use std::io::IoSlice;
-                // let mut buf = vec![];
-                // while let Ok((par_bytes, start)) = _rx.recv() {
-                //     buf.push((par_bytes, start));
-                // }
-                // buf.par_sort_by_key(|(_, start)| *start);
-                // let mut ra: Vec<IoSlice> = buf.iter().map(|(b, _)| IoSlice::new(b.as_ref())).collect();
-                // writer.write_all_vectored(&mut ra)?;
-
-                Ok::<(), anyhow::Error>(())
-            })?;
-            ra_replace(&temp)?;
-            fs::remove_file(temp)?;
-            Ok::<(), anyhow::Error>(())
-        })?;
-
-        return Ok(());
+        return download_mt(dl_url, &temp, &mut dl_writer)
     }
 
+    let now = Instant::now();
     let mut bytes_reader = reqwest::blocking::get(dl_url)?.bytes()?.reader();
     println!("Download: {:.2}s", now.elapsed().as_secs_f64());
     io::copy(&mut bytes_reader, &mut dl_writer)?;
@@ -294,6 +222,83 @@ fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
     fs::remove_file(temp)?;
 
     Ok(())
+}
+
+#[tokio::main]
+async fn download_mt(dl_url: &str, temp: &Path, dl_writer: &mut BufWriter<File>) -> Result<()> {
+    use crossbeam::channel::unbounded;
+    use tokio::sync::mpsc::unbounded_channel;
+
+    #[cfg(feature = "debug")]
+    console_subscriber::init();
+
+    let resp_start = Instant::now();
+    let client = Arc::new(reqwest::Client::new());
+    let resp_header = client.head(dl_url).send().await?;
+    println!(
+        "Response with CONTENT_LENGTH: {:.2}s",
+        resp_start.elapsed().as_secs_f64()
+    );
+
+    let content_length = resp_header
+        .headers()
+        .get(CONTENT_LENGTH)
+        .expect("response doesn't include the content length");
+    let size =
+        u64::from_str(content_length.to_str()?).expect("Error: Invalid Content-Length header");
+    let mut chunks_cnt = size / PAR_DL_BUF_SIZE + 1;
+    let (tx, mut rx) = unbounded_channel();
+    let tx = Arc::new(tx);
+    let spawn_start = Instant::now();
+    PartialRangeIter::new(0, size - 1).for_each(|(range, start)| {
+        let url = dl_url.to_owned();
+        let client = client.clone();
+        let txc = tx.clone();
+        tokio::spawn(async move {
+            let par_resp = client.get(url).header(RANGE, range).send().await?;
+            let status = par_resp.status();
+            if !(status == StatusCode::OK || status == StatusCode::PARTIAL_CONTENT) {
+                anyhow::bail!("Error: Unexpected server response: {}", status);
+            }
+            let par_bytes = par_resp.bytes().await?;
+            txc.send((par_bytes, start))?;
+            Ok::<(), anyhow::Error>(())
+        });
+    });
+
+    println!(
+        "Spawn {} tasks: {}us",
+        chunks_cnt,
+        spawn_start.elapsed().as_micros(),
+    );
+
+    let (f_tx, f_rx) = unbounded();
+    tokio::spawn(async move {
+        while chunks_cnt != 0 {
+            if let Some((par_bytes, start)) = rx.recv().await {
+                f_tx.send((par_bytes, start))?;
+                chunks_cnt -= 1;
+            }
+        }
+        println!("Download: {:.2}s", spawn_start.elapsed().as_secs_f64());
+        Ok::<(), anyhow::Error>(())
+    });
+    while let Ok((par_bytes, start)) = f_rx.recv() {
+        dl_writer.seek(SeekFrom::Start(start))?;
+        dl_writer.write_all(par_bytes.as_ref())?;
+    }
+
+    // use std::io::IoSlice;
+    // let mut buf = vec![];
+    // while let Ok((par_bytes, start)) = f_rx.recv() {
+    //     buf.push((par_bytes, start));
+    // }
+    // buf.par_sort_by_key(|(_, start)| *start);
+    // let mut ra: Vec<IoSlice> = buf.iter().map(|(b, _)| IoSlice::new(b.as_ref())).collect();
+    // writer.write_all_vectored(&mut ra)?;
+    ra_replace(&temp)?;
+    fs::remove_file(temp)?;
+    Ok::<(), anyhow::Error>(())
 }
 
 fn ra_replace(path: impl AsRef<Path>) -> Result<()> {

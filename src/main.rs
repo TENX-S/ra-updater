@@ -1,4 +1,6 @@
 // #![feature(write_all_vectored)]
+#![forbid(unsafe_code)]
+
 use anyhow::Result;
 use bytes::Buf;
 use clap::{ArgEnum, Parser, Subcommand};
@@ -252,11 +254,13 @@ async fn download_mt(dl_url: &str, dl_writer: &mut BufWriter<File>) -> Result<()
     let (tx, mut rx) = unbounded_channel();
     let tx = Arc::new(tx);
     let spawn_start = Instant::now();
+
+    let mut fut_size = None;
     ParHeadRange::new(0, size - 1).for_each(|(range, start)| {
         let url = dl_url.to_owned();
         let client = client.clone();
         let txc = tx.clone();
-        tokio::spawn(async move {
+        let fut = async move {
             let par_resp = client.get(url).header(RANGE, range).send().await?;
             let status = par_resp.status();
             if !(status == StatusCode::OK || status == StatusCode::PARTIAL_CONTENT) {
@@ -265,8 +269,14 @@ async fn download_mt(dl_url: &str, dl_writer: &mut BufWriter<File>) -> Result<()
             let par_bytes = par_resp.bytes().await?;
             txc.send((par_bytes, start))?;
             Ok::<(), anyhow::Error>(())
-        });
+        };
+        if fut_size.is_none() {
+            fut_size.replace(std::mem::size_of_val(&fut));
+        }
+
+        tokio::spawn(fut);
     });
+    println!("Task size: {} bytes", fut_size.unwrap_or_default());
 
     println!(
         "Spawn {} tasks: {}us",

@@ -19,10 +19,10 @@ use std::sync::Arc;
 use std::time::Instant;
 use strum_macros::Display;
 
-const RA_DL_BASE: &str = "https://github.com/rust-analyzer/rust-analyzer/releases/";
+const RA_DNLD_BASE: &str = "https://github.com/rust-analyzer/rust-analyzer/releases/";
 const RA_REL_API_BASE: &str = "https://api.github.com/repos/rust-analyzer/rust-analyzer/releases/";
 const MIRROR: &str = "https://github.91chi.fun//";
-const PAR_DL_SIZE: u64 = 512 * 1024;
+const PAR_DNLD_SIZE: u64 = 512 * 1024;
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[derive(Parser, Debug)]
@@ -89,12 +89,12 @@ impl RaVersion {
                 mt,
             }) = cli.cmd
             {
-                let dl_url = ra_remote(rel_chan, mirror)?.1;
-                ra_download(&dl_url, mt)?;
+                let dnld_url = ra_remote(rel_chan, mirror)?.1;
+                ra_download(&dnld_url, mt)?;
                 std::process::exit(0);
             } else {
-                let dl_url = ra_remote(ReleaseChannel::Stable, cli.mirror)?.1;
-                ra_download(&dl_url, cli.mt)?;
+                let dnld_url = ra_remote(ReleaseChannel::Stable, cli.mirror)?.1;
+                ra_download(&dnld_url, cli.mt)?;
                 std::process::exit(0);
             }
         } else {
@@ -115,8 +115,8 @@ impl RaVersion {
     fn set_channel(&mut self, rel_chan: ReleaseChannel, mirror: bool, mt: bool) -> Result<()> {
         if self.rel_chan != rel_chan {
             println!("Switching to {} channel ...", rel_chan);
-            let dl_url = ra_remote(rel_chan, mirror)?.1;
-            ra_download(&dl_url, mt)?;
+            let dnld_url = ra_remote(rel_chan, mirror)?.1;
+            ra_download(&dnld_url, mt)?;
             println!("Done");
             Ok(())
         } else {
@@ -145,7 +145,7 @@ impl Iterator for ParHeadRange {
             None
         } else {
             let prev_start = self.start;
-            self.start += std::cmp::min(PAR_DL_SIZE, self.end - self.start + 1);
+            self.start += std::cmp::min(PAR_DNLD_SIZE, self.end - self.start + 1);
             Some((
                 HeaderValue::from_str(&format!("bytes={}-{}", prev_start, self.start - 1)).unwrap(), // PANIC: Never
                 prev_start,
@@ -158,7 +158,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut ver = RaVersion::parse(&cli)?;
 
-    let (rel_api, dl_url) = &ra_remote(ver.rel_chan, cli.mirror)?;
+    let (rel_api, dnld_url) = &ra_remote(ver.rel_chan, cli.mirror)?;
     match cli.cmd {
         Some(Cmd::Channel {
             rel_chan,
@@ -180,7 +180,7 @@ fn main() -> Result<()> {
                 std::process::exit(0);
             }
             println!("Updating ...");
-            ra_download(dl_url, cli.mt)?;
+            ra_download(dnld_url, cli.mt)?;
             println!("Done");
         }
     }
@@ -200,11 +200,11 @@ fn check_update(rel_api: &str, curr: &str) -> Result<bool> {
     Ok(latest.starts_with(curr))
 }
 
-fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
+fn ra_download(dnld_url: &str, mt: bool) -> Result<()> {
     let temp = dirs_next::download_dir()
         .unwrap() // Never panic, ra_name() guarantees it
         .join("rust-analyzer_ra_updater_temp.gz");
-    let mut dl_writer = BufWriter::new(
+    let mut writer = BufWriter::new(
         OpenOptions::new()
             .create(true)
             .write(true)
@@ -214,12 +214,12 @@ fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
 
     // FIXME: handle timeout case
     if mt {
-        download_mt(dl_url, &mut dl_writer)?
+        download_mt(dnld_url, &mut writer)?
     } else {
         let now = Instant::now();
-        let mut bytes_reader = reqwest::blocking::get(dl_url)?.bytes()?.reader();
+        let mut bytes_reader = reqwest::blocking::get(dnld_url)?.bytes()?.reader();
         println!("Download: {:.2}s", now.elapsed().as_secs_f64());
-        io::copy(&mut bytes_reader, &mut dl_writer)?;
+        io::copy(&mut bytes_reader, &mut writer)?;
     }
 
     ra_replace(&temp)?;
@@ -229,7 +229,7 @@ fn ra_download(dl_url: &str, mt: bool) -> Result<()> {
 }
 
 #[tokio::main]
-async fn download_mt(dl_url: &str, dl_writer: &mut BufWriter<File>) -> Result<()> {
+async fn download_mt(dnld_url: &str, writer: &mut BufWriter<File>) -> Result<()> {
     use crossbeam::channel::unbounded;
     use tokio::sync::mpsc::unbounded_channel;
 
@@ -238,7 +238,7 @@ async fn download_mt(dl_url: &str, dl_writer: &mut BufWriter<File>) -> Result<()
 
     let resp_start = Instant::now();
     let client = Arc::new(reqwest::Client::new());
-    let resp_header = client.head(dl_url).send().await?;
+    let resp_header = client.head(dnld_url).send().await?;
     println!(
         "Response with CONTENT_LENGTH: {:.2}s",
         resp_start.elapsed().as_secs_f64()
@@ -250,14 +250,14 @@ async fn download_mt(dl_url: &str, dl_writer: &mut BufWriter<File>) -> Result<()
         .expect("response doesn't include the content length");
     let size =
         u64::from_str(content_length.to_str()?).expect("Error: Invalid Content-Length header");
-    let mut chunks_cnt = size / PAR_DL_SIZE + 1;
+    let mut chunks_cnt = size / PAR_DNLD_SIZE + 1;
     let (tx, mut rx) = unbounded_channel();
     let tx = Arc::new(tx);
     let spawn_start = Instant::now();
 
     let mut fut_size = None;
     ParHeadRange::new(0, size - 1).for_each(|(range, start)| {
-        let url = dl_url.to_owned();
+        let url = dnld_url.to_owned();
         let client = client.clone();
         let txc = tx.clone();
         let fut = async move {
@@ -296,8 +296,8 @@ async fn download_mt(dl_url: &str, dl_writer: &mut BufWriter<File>) -> Result<()
         Ok::<(), anyhow::Error>(())
     });
     while let Ok((par_bytes, start)) = f_rx.recv() {
-        dl_writer.seek(SeekFrom::Start(start))?;
-        dl_writer.write_all(par_bytes.as_ref())?;
+        writer.seek(SeekFrom::Start(start))?;
+        writer.write_all(par_bytes.as_ref())?;
     }
 
     // use std::io::IoSlice;
@@ -335,16 +335,16 @@ fn ra_version() -> Result<String> {
 
 #[inline]
 fn ra_remote(rel_chan: ReleaseChannel, mirror: bool) -> Result<(String, String)> {
-    let (api_tag, dl_tag) = match rel_chan {
+    let (api_tag, dnld_tag) = match rel_chan {
         ReleaseChannel::Stable => ("latest", "latest/download/"),
         ReleaseChannel::Nightly => ("tags/nightly", "download/nightly/"),
     };
     let rel_api = format!("{}{}", RA_REL_API_BASE, api_tag);
-    let mut dl_url = format!("{}{}{}", RA_DL_BASE, dl_tag, ra_name());
+    let mut dnld_url = format!("{}{}{}", RA_DNLD_BASE, dnld_tag, ra_name());
     if mirror {
-        dl_url.insert_str(0, MIRROR);
+        dnld_url.insert_str(0, MIRROR);
     }
-    Ok((rel_api, dl_url))
+    Ok((rel_api, dnld_url))
 }
 
 #[inline]

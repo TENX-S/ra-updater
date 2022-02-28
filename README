@@ -1,7 +1,13 @@
 If you want to update rust-analyzer manually then this utility is for you.
 Here, the "manually" means you do not use extensions live in VS Code or something similar to update rust-analyzer automatically.
 
-**Remember to set RA_HOME in your shell profile.** This environment variable shows where rust-analyzer lives in.
+**Remember to set RA_HOME in your shell profile.** This environment variable indicates the location of the rust-analyzer.
+
+Installation:
+
+    1. git clone https://github.com/TENX-S/ra-updater.git
+    2. cd ra-updater
+    3. cargo install --path . --force
 
 USAGE:
     ra-updater [OPTIONS] [SUBCOMMAND]
@@ -15,7 +21,7 @@ OPTIONS:
     -V, --version    Print version information
 
 SUBCOMMANDS:
-    channel    Set release channel for rust-analyzer
+    channel    Set the release channel of rust-analyzer
     help       Print this message or the help of the given subcommand(s)
 
 Copyright (c) 2022 Andrew Ares

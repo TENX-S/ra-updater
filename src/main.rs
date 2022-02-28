@@ -6,9 +6,13 @@ use bytes::Buf;
 use clap::{ArgEnum, Parser, Subcommand};
 use flate2::bufread::GzDecoder;
 // use rayon::prelude::*;
+use crossbeam::channel::unbounded;
+use once_cell::sync::{Lazy, OnceCell};
+use parking_lot::Mutex;
 use reqwest::header::{HeaderValue, CONTENT_LENGTH, RANGE};
 use reqwest::StatusCode;
 use serde_json::Value;
+use tokio::time::timeout;
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, prelude::*, BufReader, BufWriter, Seek, SeekFrom};
@@ -16,14 +20,26 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use strum_macros::Display;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::task::JoinSet;
 
 const RA_DNLD_BASE: &str = "https://github.com/rust-analyzer/rust-analyzer/releases/";
 const RA_REL_API_BASE: &str = "https://api.github.com/repos/rust-analyzer/rust-analyzer/releases/";
 const MIRROR: &str = "https://github.91chi.fun//";
 const PAR_DNLD_SIZE: u64 = 512 * 1024;
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+static MT_DNLD_SET: Lazy<Mutex<JoinSet<Result<()>>>> = Lazy::new(|| Mutex::new(JoinSet::new()));
+
+fn ra_dnld_temp() -> &'static PathBuf {
+    static RA_DNLD_TEMP: OnceCell<PathBuf> = OnceCell::new();
+    RA_DNLD_TEMP.get_or_init(|| {
+        dirs_next::download_dir()
+            .unwrap() // Never panic, ra_name() guarantees it
+            .join("rust-analyzer_ra_updater_temp.gz")
+    })
+}
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
@@ -154,7 +170,38 @@ impl Iterator for ParHeadRange {
     }
 }
 
+fn cancel_update() {
+    print!("Are you sure want to quit the update job? (y/n): ");
+    let mut ans = String::new();
+    if let Err(e) = std::io::stdin().read_line(&mut ans) {
+        eprintln!("Fatal error: {}", e.to_string());
+    }
+
+    if let Ok(cancel_rt) = tokio::runtime::Builder::new_current_thread().build() {
+        if ans == "Y" || ans == "y" {
+            cancel_rt.block_on(async {
+                if let Err(_) = timeout(Duration::from_secs(2), MT_DNLD_SET.lock().shutdown()).await {
+                    std::process::exit(-1);
+                }
+            });
+            
+            if ra_dnld_temp().exists() {
+                if let Err(e) = fs::remove_file(ra_dnld_temp()) {
+                    eprintln!("Fatal error: {}", e.to_string());
+                    std::process::exit(-1);
+                }
+            }
+            std::process::exit(0);
+        } else if ans == "N" || ans == "n" {
+        } else {
+            cancel_update();
+        }
+    }
+}
+
 fn main() -> Result<()> {
+    ctrlc::set_handler(cancel_update)?;
+
     let cli = Cli::parse();
     let mut ver = RaVersion::parse(&cli)?;
 
@@ -201,15 +248,13 @@ fn check_update(rel_api: &str, curr: &str) -> Result<bool> {
 }
 
 fn ra_download(dnld_url: &str, mt: bool) -> Result<()> {
-    let temp = dirs_next::download_dir()
-        .unwrap() // Never panic, ra_name() guarantees it
-        .join("rust-analyzer_ra_updater_temp.gz");
+    let temp = ra_dnld_temp();
     let mut writer = BufWriter::new(
         OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
-            .open(&temp)?,
+            .open(temp)?,
     );
 
     // FIXME: handle timeout case
@@ -222,7 +267,7 @@ fn ra_download(dnld_url: &str, mt: bool) -> Result<()> {
         io::copy(&mut bytes_reader, &mut writer)?;
     }
 
-    ra_replace(&temp)?;
+    ra_replace(temp)?;
     fs::remove_file(temp)?;
 
     Ok(())
@@ -230,9 +275,6 @@ fn ra_download(dnld_url: &str, mt: bool) -> Result<()> {
 
 #[tokio::main]
 async fn download_mt(dnld_url: &str, writer: &mut BufWriter<File>) -> Result<()> {
-    use crossbeam::channel::unbounded;
-    use tokio::sync::mpsc::unbounded_channel;
-
     #[cfg(feature = "debug")]
     console_subscriber::init();
 
@@ -273,8 +315,7 @@ async fn download_mt(dnld_url: &str, writer: &mut BufWriter<File>) -> Result<()>
         if fut_size.is_none() {
             fut_size.replace(std::mem::size_of_val(&fut));
         }
-
-        tokio::spawn(fut);
+        MT_DNLD_SET.lock().spawn(fut);
     });
     println!("Task size: {} bytes", fut_size.unwrap_or_default());
 
@@ -285,7 +326,7 @@ async fn download_mt(dnld_url: &str, writer: &mut BufWriter<File>) -> Result<()>
     );
 
     let (f_tx, f_rx) = unbounded();
-    tokio::spawn(async move {
+    MT_DNLD_SET.lock().spawn(async move {
         while chunks_cnt != 0 {
             if let Some((par_bytes, start)) = rx.recv().await {
                 f_tx.send((par_bytes, start))?;
